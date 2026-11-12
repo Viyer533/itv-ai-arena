@@ -1,6 +1,1 @@
-const {json,callFlow}=require('../lib/http');
-module.exports=async(req,res)=>{
- if(req.method!=='GET') return json(res,405,{error:'Method not allowed'});
- try{const data=await callFlow(process.env.PA_LEADERBOARD_URL,{gameId:process.env.GAME_ID||'AI-ARENA'});const rows=Array.isArray(data.results)?data.results:[];rows.sort((a,b)=>Number(b.score)-Number(a.score)||Number(a.timeSeconds)-Number(b.timeSeconds)||String(a.playerName).localeCompare(String(b.playerName)));return json(res,200,{results:rows.slice(0,100),updatedAt:new Date().toISOString()})}
- catch{return json(res,502,{error:'Leaderboard unavailable',results:[]})}
-};
+const{db}=require('../lib/supabase');module.exports=async(req,res)=>{if(req.method!=='GET')return res.status(405).json({error:'Method not allowed'});const g=process.env.GAME_ID||'AI-ARENA';try{const x=await db(`results?game_id=eq.${encodeURIComponent(g)}&select=player_name,score,correct,attempted,total,skipped,time_seconds,completed_at&order=score.desc,time_seconds.asc,completed_at.asc&limit=200`,{method:'GET'});res.json({results:x.map(r=>({playerName:r.player_name,score:r.score,correct:r.correct,attempted:r.attempted,total:r.total,skipped:r.skipped,timeSeconds:r.time_seconds,completedAt:r.completed_at}))})}catch{res.status(500).json({error:'Leaderboard unavailable',results:[]})}};

@@ -1,16 +1,1 @@
-const questions=require('../lib/questions'); const {json,callFlow}=require('../lib/http');
-const clean=s=>String(s||'').replace(/[<>]/g,'').trim().slice(0,40);
-module.exports=async(req,res)=>{
- if(req.method!=='POST') return json(res,405,{error:'Method not allowed'});
- try{
-  const status=await callFlow(process.env.PA_STATUS_URL,{gameId:process.env.GAME_ID||'AI-ARENA'});
-  if(status.enabled!==true) return json(res,403,{error:'The arena is closed. Scores are no longer being accepted.'});
- }catch{return json(res,503,{error:'Could not verify arena status.'})}
- const name=clean(req.body?.playerName), answers=req.body?.answers, timeSeconds=Math.max(0,Math.min(180,Number(req.body?.timeSeconds)));
- if(name.length<2||!Array.isArray(answers)||!Number.isFinite(timeSeconds)) return json(res,400,{error:'Invalid submission'});
- const map=new Map(answers.map(x=>[Number(x.questionId),String(x.answer)])); let score=0,correct=0,attempted=0,skipped=0;
- const scored=questions.map(q=>{const answer=map.get(q.id)||'UNANSWERED'; if(answer==='A'||answer==='B')attempted++; if(answer==='SKIP')skipped++; const isCorrect=answer===q.correct; if(isCorrect){correct++;score+=q.points} return {questionId:q.id,answer,correct:isCorrect,pointsAwarded:isCorrect?q.points:0}});
- const payload={submissionId:String(req.body?.submissionId||crypto.randomUUID()),gameId:process.env.GAME_ID||'AI-ARENA',playerName:name,score,correct,attempted,total:questions.length,skipped,timeSeconds,startedAt:req.body?.startedAt||'',completedAt:new Date().toISOString(),answers:scored};
- try{await callFlow(process.env.PA_SUBMIT_URL,payload);return json(res,200,{ok:true,score,correct,attempted,skipped,timeSeconds,total:questions.length})}
- catch{return json(res,502,{error:'The score could not be saved. Please try again.'})}
-};
+const crypto=require('crypto'),Q=require('../lib/questions'),{db}=require('../lib/supabase');module.exports=async(req,res)=>{if(req.method!=='POST')return res.status(405).json({error:'Method not allowed'});const game_id=process.env.GAME_ID||'AI-ARENA';try{const s=(await db(`game_control?game_id=eq.${encodeURIComponent(game_id)}&select=enabled&limit=1`,{method:'GET'}))[0];if(s?.enabled!==true)return res.status(403).json({error:'The arena is closed.'})}catch{return res.status(503).json({error:'Could not verify game status.'})}const player_name=String(req.body?.playerName||'').replace(/[<>]/g,'').trim().slice(0,40),raw=Number(req.body?.timeSeconds),time_seconds=Math.max(0,Math.min(180,raw)),A=req.body?.answers;if(player_name.length<2||!Array.isArray(A)||!Number.isFinite(raw))return res.status(400).json({error:'Invalid submission'});const m=new Map(A.map(x=>[Number(x.questionId),String(x.answer)]));let score=0,correct=0,attempted=0,skipped=0;const answers=Q.map(q=>{const a=m.get(q.id)||'UNANSWERED';if(a==='A'||a==='B')attempted++;if(a==='SKIP')skipped++;const ok=a===q.c;if(ok){correct++;score+=q.p}return{questionId:q.id,answer:a,correct:ok,pointsAwarded:ok?q.p:0}});try{await db('results',{method:'POST',body:JSON.stringify({submission_id:String(req.body?.submissionId||crypto.randomUUID()).slice(0,100),game_id,player_name,score,correct,attempted,total:15,skipped,time_seconds,started_at:req.body?.startedAt||null,completed_at:new Date().toISOString(),answers})});res.json({ok:true,score,correct,attempted,skipped,total:15,timeSeconds:time_seconds})}catch(e){res.status(/duplicate/i.test(e.message)?409:500).json({error:/duplicate/i.test(e.message)?'This score was already submitted.':'Score could not be saved.'})}};

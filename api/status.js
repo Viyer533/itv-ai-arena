@@ -1,8 +1,1 @@
-const {json,callFlow}=require('../lib/http');
-module.exports=async(req,res)=>{
-  if(req.method!=='GET') return json(res,405,{error:'Method not allowed'});
-  try{
-    const data=await callFlow(process.env.PA_STATUS_URL,{gameId:process.env.GAME_ID||'AI-ARENA'});
-    return json(res,200,{enabled:data.enabled===true,gameId:data.gameId||process.env.GAME_ID||'AI-ARENA',message:data.message||''});
-  }catch(e){return json(res,200,{enabled:false,message:'The arena is currently closed.'})}
-};
+const{db}=require('../lib/supabase');module.exports=async(req,res)=>{if(req.method!=='GET')return res.status(405).json({error:'Method not allowed'});const g=process.env.GAME_ID||'AI-ARENA';try{const x=(await db(`game_control?game_id=eq.${encodeURIComponent(g)}&select=enabled,message&limit=1`,{method:'GET'}))[0];res.status(200).json({enabled:x?.enabled===true,message:x?.message||'The arena is not open yet.'})}catch{res.status(200).json({enabled:false,message:'The arena is currently closed.'})}};
